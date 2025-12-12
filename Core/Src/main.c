@@ -48,7 +48,7 @@ I2C_HandleTypeDef hi2c1;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-uint8_t SLAVE_ADDRESS = 0b1001000; // 0x48 (7-bit)
+char *error_text;
 
 /* USER CODE END PV */
 
@@ -63,26 +63,46 @@ static void MX_USART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-void readConfigSafe(uint16_t *reg_value) {
+void privateErrorHandler() {
+	 CDC_Transmit_FS((uint8_t *)error_text, strlen(error_text));
+	 HAL_Delay(5000);
+}
+
+void readConfig(uint16_t *reg_value, uint8_t cfg_ptr) {
     uint8_t buffer[2];
-    uint8_t cfg_ptr = 0b00000001;
     uint32_t timeout = 200; // ms
-    uint8_t adr = 0b1001000 << 1;
+    uint8_t slave_address = 0b1001000 << 1;
 
     // Quick device presence check
-    if (HAL_I2C_IsDeviceReady(&hi2c1, adr, 3, timeout) != HAL_OK) {
-        *reg_value = 0xFE; // not present
+    if (HAL_I2C_IsDeviceReady(&hi2c1, slave_address, 3, timeout) != HAL_OK) {
+    	error_text = "Device not Present";
         return;
     }
 
     // Read config register (2 bytes) using Mem_Read (handles repeated start)
-    if (HAL_I2C_Master_Transmit(&hi2c1, adr, &cfg_ptr, 1, HAL_TIMEOUT) != HAL_OK) {
-        *reg_value = 0xFD; // read error
+    if (HAL_I2C_Master_Transmit(&hi2c1, slave_address, &cfg_ptr, 1, HAL_TIMEOUT) != HAL_OK) {
+        error_text = "Read error";
         return;
     } else {
-    	HAL_I2C_Master_Receive(&hi2c1, adr, buffer, 2, HAL_TIMEOUT);
+    	HAL_I2C_Master_Receive(&hi2c1, slave_address, buffer, 2, HAL_TIMEOUT);
     	*reg_value = (buffer[0] << 8 | buffer[1]);
     }
+}
+
+void writeConfig(uint16_t cfg_ptr, uint8_t *data) {
+	uint8_t slave_address = 0b1001000 << 1;
+	if (HAL_I2C_IsDeviceReady(&hi2c1, slave_address, 3, 200) != HAL_OK) {
+		error_text = "Device not Present for writing";
+		privateErrorHandler();
+		return;
+	}
+	if (HAL_I2C_Mem_Write(&hi2c1, slave_address, 0x01, I2C_MEMADD_SIZE_8BIT, data, 2, HAL_TIMEOUT) != HAL_OK) {
+		error_text = "Write error";
+		privateErrorHandler();
+		return;
+	} else {
+		CDC_Transmit_FS("Writing successful!\n", 27);
+	}
 }
 
 
@@ -135,24 +155,24 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  uint16_t rv;
-	  readConfigSafe(&rv);
-
+	  uint16_t config_reg_value;
+	  uint8_t config_reg_addr = 0b00000001;
 	  char msg[32];
-	  if (rv == 0xFE) {
-		  sprintf(msg, "I2C: device NOT present\r\n");
-		}
-		else if (rv == 0xFD) {
-			sprintf(msg, "I2C: read ERROR\r\n");
 
-		}
+	  readConfig(&config_reg_value, config_reg_addr);
 
-		else {
-	    	sprintf(msg, "I2C: cfg=0x%04X\r\n", rv);
-//	    	HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), HAL_TIMEOUT);
-	    	CDC_Transmit_FS((uint8_t *)msg, strlen(msg));
-			HAL_Delay(500);
-		}
+	  sprintf(msg, "I2C: cfg=0x%04X\r\n", config_reg_value);
+	  CDC_Transmit_FS((uint8_t *)msg, strlen(msg));
+	  HAL_Delay(500);
+
+	  uint8_t buffer[2] = {0x45, 0x83};
+	  writeConfig((uint16_t)config_reg_addr, buffer);
+	  HAL_Delay(20);
+
+	  readConfig(&config_reg_value, config_reg_addr);
+	  sprintf(msg, "I2C: cfg=0x%04X\r\n", config_reg_value);
+	  CDC_Transmit_FS((uint8_t *)msg, strlen(msg));
+	  HAL_Delay(500);
   }
   /* USER CODE END 3 */
 }
@@ -299,7 +319,7 @@ static void MX_GPIO_Init(void)
   * @brief  This function is executed in case of error occurrence.
   * @retval None
   */
-void Error_Handler(void)
+void Error_Handler()
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
