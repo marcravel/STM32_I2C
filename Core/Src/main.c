@@ -116,8 +116,8 @@ int main(void)
 	int16_t value = 0;
 	int16_t value2 = 0;
 	uint8_t conv_reg_addr = 0x00;
-	uint8_t a1_config[2] = {0xD5, 0x83};
-	uint8_t a3_config[2] = {0xF3, 0x83};
+	uint8_t a1_config[2] = {0xD5, 0x83}; // 1 101 010 1 100 00011 OS MUX PGA DR COMP
+	uint8_t a3_config[2] = {0xF3, 0x83}; // 1 111 001 1 100 00011
 	char txt[64];
 
   /* USER CODE END 2 */
