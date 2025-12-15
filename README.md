@@ -1,110 +1,97 @@
 # 🚀 STM32F103 + ADS1115 I2C Practice Project (USB CDC Output)
 
-This project is a **practice exercise for learning I2C** on the STM32F103C8T6 “Blue Pill”.
-We use an **ADS1115 16-bit ADC** to read **any analog sensor** (temperature sensor, potentiometer, voltage source, etc.).
+This project is a **practical I2C learning implementation** using the STM32F103C8T6 “Blue Pill” as the master and the **ADS1115 16-bit ADC** as the slave.
 
-Measurements are sent to the PC using **USB CDC (Virtual COM Port)** instead of UART, making the setup simple and clean.
+The system reads **two analog sensors**, performs **on-device conversion to physical units**, and transmits **ready-to-use values** to the PC via **USB CDC (Virtual COM Port)**.
 
 ---
 
-## 🌟 Overview
+## 🌟 Project Status
 
-This firmware demonstrates how to:
+✅ I2C communication stable
+✅ ADS1115 configuration validated
+✅ Correct channel selection per sensor
+✅ **Temperature converted to °C on the STM32**
+✅ **Potentiometer converted to resistance (Ω) on the STM32**
+✅ USB CDC output working
+✅ No UART required
 
-* Initialize **I2C1** using HAL
-* Configure the **ADS1115** (MUX, PGA, mode, data rate)
-* Read 16-bit conversion values
-* Convert raw ADC output into voltage
-* Send results over **USB CDC**
-
-The goal is to gain hands-on experience with low-level I2C communication.
+All transmitted values are **physical quantities**, not raw ADC counts.
 
 ---
 
 ## 🛠️ Hardware
 
-| Component                     | Description                             |
-| ----------------------------- | --------------------------------------- |
-| **STM32F103C8T6 "Blue Pill"** | Microcontroller (I2C Master + USB CDC)  |
-| **ADS1115 Module**            | 16-bit ADC                              |
-| **Analog Sensor**             | Temperature sensor, potentiometer, etc. |
-| **USB Cable**                 | For power + CDC output                  |
+| Component                     | Description                |
+| ----------------------------- | -------------------------- |
+| **STM32F103C8T6 (Blue Pill)** | I2C master, USB CDC device |
+| **ADS1115**                   | 16-bit I2C ADC             |
+| **Temperature Sensor**        | Analog temperature sensor  |
+| **Potentiometer**             | Variable resistor input    |
+| **USB Cable**                 | Power + CDC communication  |
 
 ---
 
 ## 🔌 Wiring
 
-| ADS1115 Pin | Blue Pill Pin | Notes                      |
-| ----------- | ------------- | -------------------------- |
-| **VCC**     | 3.3V          | Power                      |
-| **GND**     | GND           | Ground                     |
-| **SCL**     | PB6           | I2C Clock                  |
-| **SDA**     | PB7           | I2C Data                   |
-| **ADDR**    | GND           | Sets slave address to 0x48 |
-| **A0–A3**   | Sensor Input  | Connect your analog sensor |
-
-Most ADS1115 boards already include I2C pull-up resistors.
+| ADS1115 Pin | Blue Pill Pin | Notes                         |
+| ----------- | ------------- | ----------------------------- |
+| **VDD**     | 3.3V          | Powered from STM32            |
+| **GND**     | GND           | Common ground                 |
+| **SCL**     | PB6           | I2C clock                     |
+| **SDA**     | PB7           | I2C data                      |
+| **ADDR**    | GND           | I2C address set to `0x48`     |
+| **A1**      | Temp sensor   | Temperature measurement input |
+| **A3**      | Potentiometer | Resistance measurement input  |
 
 ---
 
 ## 💻 Tools Used
 
 * **STM32CubeIDE**
-* **HAL Drivers**
-* **USB Device (CDC Class)**
-* **ST-Link**
-* **Serial Monitor** (Windows, Linux, macOS)
+* **STM32 HAL Drivers**
+* **USB Device (CDC class)**
+* **ST-Link v2**
+* **PC Serial Monitor**
 
 ---
 
 ## ⚙️ How It Works
 
-1. **I2C1** runs at 400 kHz.
-2. The ADS1115 **config register** is written to start a single conversion.
-3. The **conversion register** is read via I2C.
-4. The result is converted to a voltage.
-5. The formatted string is transmitted over **USB CDC** to the PC.
+1. The STM32 initializes **I2C1** as the master interface.
+2. The ADS1115 is configured for **single-shot measurements**.
+3. Each sensor is selected using the **input multiplexer (MUX)**.
+4. The ADC conversion result is read from the ADS1115.
+5. **Raw ADC values are converted on the STM32**:
+
+   * Voltage → **Temperature (°C)**
+   * Voltage → **Resistance (Ω)**
+6. The computed physical values are sent to the PC via **USB CDC**.
+
+The PC receives **human-readable measurements**, requiring no further processing.
 
 ---
 
-## 📝 Example Code Snippet
+## 📤 Output
 
-```c
-uint8_t txbuf[64];
-uint8_t data[3];
-uint8_t raw[2];
-int16_t adc;
-float voltage;
+The serial output displays:
 
-#define ADS1115_ADDR (0x48 << 1)
+* **Temperature in degrees Celsius (°C)**
+* **Potentiometer resistance in ohms (Ω)**
 
-// Configure ADS1115
-data[0] = 0x01;  // Config register
-data[1] = 0xC3;  // Example MSB config
-data[2] = 0x83;  // Example LSB config
-
-HAL_I2C_Master_Transmit(&hi2c1, ADS1115_ADDR, data, 3, HAL_MAX_DELAY);
-
-// Request conversion register
-data[0] = 0x00;
-HAL_I2C_Master_Transmit(&hi2c1, ADS1115_ADDR, data, 1, HAL_MAX_DELAY);
-
-// Read conversion result
-HAL_I2C_Master_Receive(&hi2c1, ADS1115_ADDR, raw, 2, HAL_MAX_DELAY);
-
-adc = (raw[0] << 8) | raw[1];
-voltage = adc * (4.096f / 32768.0f);
-
-// Send measurement over USB CDC
-int len = sprintf((char*)txbuf, "ADC: %d, Voltage: %.4f V\r\n", adc, voltage);
-CDC_Transmit_FS(txbuf, len);
-```
+Values are accurate, stable, and correctly associated with their respective sensors.
 
 ---
 
 ## 🛣️ Future Improvements
 
-* Continuous sampling mode
-* Read all ADS1115 input channels
-* Sampling using timer interrupts
-* Filtering (moving average, exponential smoothing)
+* Continuous conversion mode
+* Multi-channel scanning with timestamps
+* Digital filtering (moving average / exponential)
+* Calibration offsets and gain correction
+* Data logging on the PC side
+
+---
+
+This project now serves as a **clean reference implementation** for:
+**STM32 + ADS1115 + I2C + physical-unit conversion + USB CDC output**.
