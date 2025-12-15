@@ -63,53 +63,19 @@ static void MX_USART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-void privateErrorHandler() {
-	 CDC_Transmit_FS((uint8_t *)error_text, strlen(error_text));
-	 HAL_Delay(5000);
+uint8_t slave_address = 0b1001000 << 1;
+
+float temperature_calc(int16_t raw) {
+	float vin = (raw * 2.048) / 32768.0;
+	float temp = (vin - 0.5) * 100;
+	return temp;
 }
 
-void readConfig(uint16_t *reg_value, uint8_t cfg_ptr) {
-    uint8_t buffer[2];
-    uint32_t timeout = 200; // ms
-    uint8_t slave_address = 0b1001000 << 1;
-
-    // Quick device presence check
-    if (HAL_I2C_IsDeviceReady(&hi2c1, slave_address, 3, timeout) != HAL_OK) {
-    	error_text = "Device not Present";
-        return;
-    }
-
-    // Read config register (2 bytes) using Mem_Read (handles repeated start)
-    if (HAL_I2C_Master_Transmit(&hi2c1, slave_address, &cfg_ptr, 1, HAL_TIMEOUT) != HAL_OK) {
-        error_text = "Read error";
-        return;
-    } else {
-    	HAL_I2C_Master_Receive(&hi2c1, slave_address, buffer, 2, HAL_TIMEOUT);
-    	*reg_value = (buffer[0] << 8 | buffer[1]);
-    }
+float res_calc(int16_t raw) {
+	float vin = (raw * 4.096) / 32768.0;
+	float res = (vin / 3.3) * 10000.0;
+	return res;
 }
-
-void writeConfig(uint16_t cfg_ptr, uint8_t *data) {
-	uint8_t slave_address = 0b1001000 << 1;
-	if (HAL_I2C_IsDeviceReady(&hi2c1, slave_address, 3, 200) != HAL_OK) {
-		error_text = "Device not Present for writing";
-		privateErrorHandler();
-		return;
-	}
-	if (HAL_I2C_Mem_Write(&hi2c1, slave_address, 0x01, I2C_MEMADD_SIZE_8BIT, data, 2, HAL_TIMEOUT) != HAL_OK) {
-		error_text = "Write error";
-		privateErrorHandler();
-		return;
-	} else {
-		CDC_Transmit_FS("Writing successful!\n", 27);
-	}
-}
-
-
-void ReadA0() {
-	//uint8_t a0_reg = 0b100;
-}
-
 /* USER CODE END 0 */
 
 /**
@@ -145,6 +111,14 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
+	uint8_t bufferTemp[2];
+	uint8_t bufferPot[2];
+	int16_t value = 0;
+	int16_t value2 = 0;
+	uint8_t conv_reg_addr = 0x00;
+	uint8_t a1_config[2] = {0xD5, 0x83};
+	uint8_t a3_config[2] = {0xF3, 0x83};
+	char txt[64];
 
   /* USER CODE END 2 */
 
@@ -155,24 +129,28 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  uint16_t config_reg_value;
-	  uint8_t config_reg_addr = 0b00000001;
-	  char msg[32];
 
-	  readConfig(&config_reg_value, config_reg_addr);
+	HAL_I2C_Mem_Write(&hi2c1, slave_address, 0x01, I2C_MEMADD_SIZE_8BIT, a1_config, 2, HAL_TIMEOUT);
+	HAL_Delay(10);
+	HAL_I2C_Master_Transmit(&hi2c1, slave_address, &conv_reg_addr, 1, HAL_TIMEOUT);
+	HAL_I2C_Master_Receive(&hi2c1, slave_address, bufferTemp, 2, 100);
+	value = (bufferTemp[0] << 8 | bufferTemp[1]);
+	float tempReal = temperature_calc(value);
 
-	  sprintf(msg, "I2C: cfg=0x%04X\r\n", config_reg_value);
-	  CDC_Transmit_FS((uint8_t *)msg, strlen(msg));
-	  HAL_Delay(500);
+	HAL_I2C_Mem_Write(&hi2c1, slave_address, 0x01, I2C_MEMADD_SIZE_8BIT, a3_config, 2, HAL_TIMEOUT);
+	HAL_Delay(10);
+	HAL_I2C_Master_Transmit(&hi2c1, slave_address, &conv_reg_addr, 1, HAL_TIMEOUT);
+	HAL_I2C_Master_Receive(&hi2c1, slave_address, bufferPot, 2, 100);
+	value2 = (bufferPot[0] << 8 | bufferPot[1]);
+	float resReal = res_calc(value2);
 
-	  uint8_t buffer[2] = {0x45, 0x83};
-	  writeConfig((uint16_t)config_reg_addr, buffer);
-	  HAL_Delay(20);
+	sprintf(txt, "Temp: %.2f *C - Pot: %.2f ohm\n", tempReal, resReal);
 
-	  readConfig(&config_reg_value, config_reg_addr);
-	  sprintf(msg, "I2C: cfg=0x%04X\r\n", config_reg_value);
-	  CDC_Transmit_FS((uint8_t *)msg, strlen(msg));
-	  HAL_Delay(500);
+	CDC_Transmit_FS(txt, strlen(txt));
+
+	HAL_Delay(500);
+//	  }
+
   }
   /* USER CODE END 3 */
 }
@@ -319,7 +297,7 @@ static void MX_GPIO_Init(void)
   * @brief  This function is executed in case of error occurrence.
   * @retval None
   */
-void Error_Handler()
+void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
