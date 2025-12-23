@@ -113,8 +113,8 @@ int main(void)
   /* USER CODE BEGIN 2 */
 	uint8_t bufferTemp[2];
 	uint8_t bufferPot[2];
-	int16_t value = 0;
-	int16_t value2 = 0;
+	int16_t value_temp = 0;
+	int16_t value_pot = 0;
 	uint8_t conv_reg_addr = 0x00;
 	uint8_t a1_config[2] = {0xD5, 0x83}; // 1 101 010 1 100 00011 OS MUX PGA MODE DR COMP
 	uint8_t a3_config[2] = {0xF3, 0x83}; // 1 111 001 1 100 00011
@@ -134,15 +134,15 @@ int main(void)
 	HAL_Delay(10);
 	HAL_I2C_Master_Transmit(&hi2c1, slave_address, &conv_reg_addr, 1, HAL_TIMEOUT);
 	HAL_I2C_Master_Receive(&hi2c1, slave_address, bufferTemp, 2, 100);
-	value = (bufferTemp[0] << 8 | bufferTemp[1]);
-	float tempReal = temperature_calc(value);
+	value_temp = (bufferTemp[0] << 8 | bufferTemp[1]);
+	float tempReal = temperature_calc(value_temp);
 
 	HAL_I2C_Mem_Write(&hi2c1, slave_address, 0x01, I2C_MEMADD_SIZE_8BIT, a3_config, 2, HAL_TIMEOUT);
 	HAL_Delay(10);
 	HAL_I2C_Master_Transmit(&hi2c1, slave_address, &conv_reg_addr, 1, HAL_TIMEOUT);
 	HAL_I2C_Master_Receive(&hi2c1, slave_address, bufferPot, 2, 100);
-	value2 = (bufferPot[0] << 8 | bufferPot[1]);
-	float resReal = res_calc(value2);
+	value_pot = (bufferPot[0] << 8 | bufferPot[1]);
+	float resReal = res_calc(value_pot);
 
 	sprintf(txt, "Temp: %.2f *C - Pot: %.2f ohm\n", tempReal, resReal);
 
