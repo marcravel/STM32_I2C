@@ -34,7 +34,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define slave_address 0x90 // ADDR pin -> GND -> Adres=1001000b << 1 -> 0x90
+#define config_reg_address 0x01
+#define conversion_reg_address 0x00
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -45,10 +47,7 @@
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
 
-UART_HandleTypeDef huart1;
-
 /* USER CODE BEGIN PV */
-char *error_text;
 
 /* USER CODE END PV */
 
@@ -56,14 +55,12 @@ char *error_text;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
-static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-uint8_t slave_address = 0b1001000 << 1;
 
 float temperature_calc(int16_t raw) {
 	float vin = (raw * 2.048) / 32768.0;
@@ -108,17 +105,15 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_I2C1_Init();
-  MX_USART1_UART_Init();
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
 	uint8_t bufferTemp[2];
 	uint8_t bufferPot[2];
-	int16_t value_temp = 0;
-	int16_t value_pot = 0;
-	uint8_t conv_reg_addr = 0x00;
-	uint8_t a1_config[2] = {0xD5, 0x83}; // 1 101 010 1 100 00011 OS MUX PGA MODE DR COMP
-	uint8_t a3_config[2] = {0xF3, 0x83}; // 1 111 001 1 100 00011
-	char txt[64];
+	int16_t raw_temp = 0;
+	int16_t raw_pot = 0;
+	uint8_t a1_config[2] = {0xD5, 0x83}; // 1 101 010 1 100 00011 OS MUX PGA MODE DR COMP // AN1 2.048V Single shot
+	uint8_t a3_config[2] = {0xF3, 0x83}; // 1 111 001 1 100 00011						  // AN3 4.096V Single shot
+	char txt[50];
 
   /* USER CODE END 2 */
 
@@ -130,26 +125,25 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-	HAL_I2C_Mem_Write(&hi2c1, slave_address, 0x01, I2C_MEMADD_SIZE_8BIT, a1_config, 2, HAL_TIMEOUT);
+	HAL_I2C_Mem_Write(&hi2c1, slave_address, config_reg_address, I2C_MEMADD_SIZE_8BIT, a1_config, 2, HAL_TIMEOUT);
 	HAL_Delay(10);
-	HAL_I2C_Master_Transmit(&hi2c1, slave_address, &conv_reg_addr, 1, HAL_TIMEOUT);
+	HAL_I2C_Master_Transmit(&hi2c1, slave_address, conversion_reg_address, 1, HAL_TIMEOUT);
 	HAL_I2C_Master_Receive(&hi2c1, slave_address, bufferTemp, 2, 100);
-	value_temp = (bufferTemp[0] << 8 | bufferTemp[1]);
-	float tempReal = temperature_calc(value_temp);
+	raw_temp = (bufferTemp[0] << 8 | bufferTemp[1]);
+	float temp_value = temperature_calc(raw_temp);
 
-	HAL_I2C_Mem_Write(&hi2c1, slave_address, 0x01, I2C_MEMADD_SIZE_8BIT, a3_config, 2, HAL_TIMEOUT);
+	HAL_I2C_Mem_Write(&hi2c1, slave_address, config_reg_address, I2C_MEMADD_SIZE_8BIT, a3_config, 2, HAL_TIMEOUT);
 	HAL_Delay(10);
-	HAL_I2C_Master_Transmit(&hi2c1, slave_address, &conv_reg_addr, 1, HAL_TIMEOUT);
+	HAL_I2C_Master_Transmit(&hi2c1, slave_address, conversion_reg_address, 1, HAL_TIMEOUT);
 	HAL_I2C_Master_Receive(&hi2c1, slave_address, bufferPot, 2, 100);
-	value_pot = (bufferPot[0] << 8 | bufferPot[1]);
-	float resReal = res_calc(value_pot);
+	raw_pot = (bufferPot[0] << 8 | bufferPot[1]);
+	float res_value = res_calc(raw_pot);
 
-	sprintf(txt, "Temp: %.2f *C - Pot: %.2f ohm\n", tempReal, resReal);
+	sprintf(txt, "Temp: %.2f *C - Pot: %.2f ohm\r\n", temp_value, res_value);
 
 	CDC_Transmit_FS(txt, strlen(txt));
 
 	HAL_Delay(500);
-//	  }
 
   }
   /* USER CODE END 3 */
@@ -217,7 +211,7 @@ static void MX_I2C1_Init(void)
 
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
-  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.ClockSpeed = 400000;
   hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
   hi2c1.Init.OwnAddress1 = 0;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
@@ -232,39 +226,6 @@ static void MX_I2C1_Init(void)
   /* USER CODE BEGIN I2C1_Init 2 */
 
   /* USER CODE END I2C1_Init 2 */
-
-}
-
-/**
-  * @brief USART1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART1_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART1_Init 0 */
-
-  /* USER CODE END USART1_Init 0 */
-
-  /* USER CODE BEGIN USART1_Init 1 */
-
-  /* USER CODE END USART1_Init 1 */
-  huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
-  huart1.Init.WordLength = UART_WORDLENGTH_8B;
-  huart1.Init.StopBits = UART_STOPBITS_1;
-  huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
-  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART1_Init 2 */
-
-  /* USER CODE END USART1_Init 2 */
 
 }
 
